@@ -1,7 +1,11 @@
 <script setup>
 import { useLayout } from '@/layout/composables/layout';
-import { ref, computed } from 'vue';
+import { onAuthStateChanged, getAuth } from 'firebase/auth';
+import { ref, computed, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
 import AppConfig from '@/layout/AppConfig.vue';
+
+const router = useRouter();
 
 const { layoutConfig } = useLayout();
 const email = ref('');
@@ -9,6 +13,15 @@ const password = ref('');
 
 const logoUrl = computed(() => {
     return `/layout/images/${layoutConfig.darkTheme.value ? 'logo-white' : 'logo-dark'}.svg`;
+});
+
+onMounted(() => {
+    const auth = getAuth();
+    onAuthStateChanged(auth, (user) => {
+        if (user) {
+            router.push('/');
+        }
+    });
 });
 </script>
 

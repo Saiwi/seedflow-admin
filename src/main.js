@@ -221,4 +221,8 @@ app.component('TreeTable', TreeTable);
 app.component('TriStateCheckbox', TriStateCheckbox);
 app.component('VirtualScroller', VirtualScroller);
 
+import firebase from "./firebase";
+
+window.db = firebase.firestore;
+
 app.mount('#app');

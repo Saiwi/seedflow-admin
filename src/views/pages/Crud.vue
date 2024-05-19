@@ -19,19 +19,6 @@ const statuses = ref([{ label: 'Статус', value: 'status' }]);
 
 const productService = new ProductService();
 
-const getBadgeSeverity = (inventoryStatus) => {
-    switch (inventoryStatus.toLowerCase()) {
-        case 'instock':
-            return 'success';
-        case 'lowstock':
-            return 'warning';
-        case 'outofstock':
-            return 'danger';
-        default:
-            return 'info';
-    }
-};
-
 onBeforeMount(() => {
     initFilters();
 });
