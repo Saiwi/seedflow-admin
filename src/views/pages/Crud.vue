@@ -189,7 +189,7 @@ onBeforeMount(async () => {
 
 <template>
     <div>
-        <ConfirmPopup></ConfirmPopup>
+        <ConfirmDialog key="productRemove"></ConfirmDialog>
         <Dialog :loading="loading" header="Створити товар" v-model:visible="showAddModal" modal>
             <form @submit.prevent="submitAddForm" class="flex flex-column mt-2 mb-2 gap-4">
                 <div class="flex flex-column gap-2">
