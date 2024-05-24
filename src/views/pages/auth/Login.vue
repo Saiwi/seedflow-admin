@@ -1,25 +1,58 @@
 <script setup>
 import { useLayout } from '@/layout/composables/layout';
-import { onAuthStateChanged, getAuth } from 'firebase/auth';
+import { onAuthStateChanged, getAuth, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import AppConfig from '@/layout/AppConfig.vue';
+import Translates from '@/service/Translates';
+import { doc, getDoc } from 'firebase/firestore';
 
 const router = useRouter();
+const auth = getAuth();
+const message = ref([]);
 
 const { layoutConfig } = useLayout();
 const email = ref('');
 const password = ref('');
+const isLoading = ref(false);
 
 const logoUrl = computed(() => {
     return `/layout/images/${layoutConfig.darkTheme.value ? 'logo-white' : 'logo-dark'}.svg`;
 });
 
+const showError = (content) => {
+    message.value = [{ severity: 'error', detail: 'Помилка!', content, id: 1 }];
+};
+
+const onSubmit = () => {
+    isLoading.value = true;
+    signInWithEmailAndPassword(auth, email.value, password.value)
+        .catch((error) => {
+            showError(Translates.translateAuthErrorCodeToUkrainian(error.code));
+        })
+        .finally(() => {
+            isLoading.value = false;
+        });
+};
+
 onMounted(() => {
-    const auth = getAuth();
-    onAuthStateChanged(auth, (user) => {
+    onAuthStateChanged(auth, async (user) => {
         if (user) {
-            router.push('/');
+            const profileDocRef = doc(window.db, 'profiles', user.uid);
+            getDoc(profileDocRef)
+                .then((result) => {
+                    const { isAdmin } = result.data();
+                    if (!isAdmin) {
+                        signOut(auth).then(() => {
+                            showError('Користувач не є адміністратором');
+                        });
+                    } else {
+                        router.push('/');
+                    }
+                })
+                .catch((error) => {
+                    showError(Translates.translateAuthErrorCodeToUkrainian(error.code));
+                });
         }
     });
 });
@@ -42,7 +75,11 @@ onMounted(() => {
                         <label for="password1" class="block text-900 font-medium text-xl mb-2">Пароль</label>
                         <Password id="password1" v-model="password" placeholder="Введіть пароль" :toggleMask="true" class="w-full mb-3" inputClass="w-full" :inputStyle="{ padding: '1rem' }"></Password>
 
-                        <Button label="Sign In" class="w-full p-3 mt-4 text-xl"></Button>
+                        <Button label="Sign In" class="w-full p-3 mt-4 text-xl" :loading="isLoading" @click="onSubmit"></Button>
+
+                        <transition-group name="p-message" tag="div">
+                            <Message v-for="msg of message" :severity="msg.severity" :key="msg.content">{{ msg.content }}</Message>
+                        </transition-group>
                     </div>
                 </div>
             </div>

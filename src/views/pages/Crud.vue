@@ -1,288 +1,410 @@
 <script setup>
+import { onBeforeMount, ref } from 'vue';
 import { FilterMatchMode } from 'primevue/api';
-import { ref, onMounted, onBeforeMount } from 'vue';
-import { ProductService } from '@/service/ProductService';
+import orderService from '@/service/OrderService';
+import productService from '@/service/ProductService';
+import commentsService from '@/service/CommentsService';
+import FilterService from '@/service/FilterService';
+import { onAuthStateChanged, getAuth } from 'firebase/auth';
+import { useRouter } from 'vue-router';
+import Editor from 'primevue/editor';
 import { useToast } from 'primevue/usetoast';
+import { useConfirm } from 'primevue/useconfirm';
 
+const confirm = useConfirm();
+
+const loading = ref(false);
 const toast = useToast();
 
-const products = ref(null);
-const productDialog = ref(false);
-const deleteProductDialog = ref(false);
-const deleteProductsDialog = ref(false);
-const product = ref({});
-const selectedProducts = ref(null);
-const dt = ref(null);
-const filters = ref({});
-const submitted = ref(false);
-const statuses = ref([{ label: 'Статус', value: 'status' }]);
+const ordersList = ref([]);
+const orderFilters = ref(null);
 
-const productService = new ProductService();
+const commentsList = ref([]);
+const commentsFilters = ref(null);
 
-onBeforeMount(() => {
-    initFilters();
-});
-onMounted(() => {
-    productService.getProducts().then((data) => (products.value = data));
-});
-const formatCurrency = (value) => {
-    return value.toLocaleString('uk-UA', { style: 'currency', currency: 'UAH' });
-};
+const productsFilters = ref(null);
+const productsList = ref([]);
 
-const openNew = () => {
-    product.value = {};
-    submitted.value = false;
-    productDialog.value = true;
-};
+const allFilters = ref([]);
+const productFiltersData = ref([]);
 
-const hideDialog = () => {
-    productDialog.value = false;
-    submitted.value = false;
-};
+const router = useRouter();
 
-const saveProduct = () => {
-    submitted.value = true;
-    if (product.value.name && product.value.name.trim() && product.value.price) {
-        if (product.value.id) {
-            product.value.inventoryStatus = product.value.inventoryStatus.value ? product.value.inventoryStatus.value : product.value.inventoryStatus;
-            products.value[findIndexById(product.value.id)] = product.value;
-            toast.add({ severity: 'success', summary: 'Successful', detail: 'Product Updated', life: 3000 });
-        } else {
-            product.value.id = createId();
-            product.value.code = createId();
-            product.value.image = 'product-placeholder.svg';
-            product.value.inventoryStatus = product.value.inventoryStatus ? product.value.inventoryStatus.value : 'INSTOCK';
-            products.value.push(product.value);
-            toast.add({ severity: 'success', summary: 'Успіх', detail: 'Продукт створено', life: 3000 });
-        }
-        productDialog.value = false;
-        product.value = {};
-    }
-};
-
-const editProduct = (editProduct) => {
-    product.value = { ...editProduct };
-    productDialog.value = true;
-};
-
-const confirmDeleteProduct = (editProduct) => {
-    product.value = editProduct;
-    deleteProductDialog.value = true;
-};
-
-const deleteProduct = () => {
-    products.value = products.value.filter((val) => val.id !== product.value.id);
-    deleteProductDialog.value = false;
-    product.value = {};
-    toast.add({ severity: 'success', summary: 'Successful', detail: 'Product Deleted', life: 3000 });
-};
-
-const findIndexById = (id) => {
-    let index = -1;
-    for (let i = 0; i < products.value.length; i++) {
-        if (products.value[i].id === id) {
-            index = i;
-            break;
-        }
-    }
-    return index;
-};
-
-const createId = () => {
-    let id = '';
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    for (let i = 0; i < 5; i++) {
-        id += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return id;
-};
-
-const exportCSV = () => {
-    dt.value.exportCSV();
-};
-
-const confirmDeleteSelected = () => {
-    deleteProductsDialog.value = true;
-};
-const deleteSelectedProducts = () => {
-    products.value = products.value.filter((val) => !selectedProducts.value.includes(val));
-    deleteProductsDialog.value = false;
-    selectedProducts.value = null;
-    toast.add({ severity: 'success', summary: 'Successful', detail: 'Products Deleted', life: 3000 });
-};
-
-const initFilters = () => {
-    filters.value = {
+const initOrderFilters = () => {
+    orderFilters.value = {
         global: { value: null, matchMode: FilterMatchMode.CONTAINS }
     };
 };
+const initCommentsFilters = () => {
+    commentsFilters.value = {
+        global: { value: null, matchMode: FilterMatchMode.CONTAINS }
+    };
+};
+const initProductsFilters = () => {
+    productsFilters.value = {
+        global: { value: null, matchMode: FilterMatchMode.CONTAINS }
+    };
+};
+
+const showSuccess = (text) => {
+    toast.add({ severity: 'info', summary: 'Виконано', detail: text, life: 3000 });
+};
+const showError = (text) => {
+    toast.add({ severity: 'error', summary: 'Помилка', detail: text, life: 3000 });
+};
+
+const catalogsList = ref([]);
+const categoriesList = ref([]);
+const filtersList = ref([]);
+const showAddModal = ref(false);
+const addFormData = ref({
+    name: '',
+    price: '',
+    status: true,
+    image: '',
+    description: '',
+    catalogId: '',
+    categoryId: '',
+    filters: {}
+});
+const validate = (data) => {
+    return Object.keys(data).every((field) => {
+        if (!status) {
+            return true;
+        }
+        return !!data[field];
+    });
+};
+const submitAddForm = async () => {
+    loading.value = true;
+
+    if (!validate({ ...addFormData.value })) {
+        showError('Заповність всі поля!');
+        return false;
+    }
+
+    const { result, message } = await productService.createProduct({ ...addFormData.value });
+
+    loading.value = false;
+    if (result) {
+        showSuccess(message);
+    } else {
+        showError(message);
+        return false;
+    }
+    addFormData.value = {
+        name: '',
+        price: '',
+        status: true,
+        image: '',
+        description: '',
+        catalogId: '',
+        categoryId: '',
+        filters: {}
+    };
+    categoriesList.value = [];
+    showAddModal.value = false;
+    loading.value = false;
+
+    loadProducts();
+};
+const onCatalogChange = async (newCatalogId) => {
+    const categories = await productService.fetchCategories(newCatalogId);
+    const filters = await productService.fetchFilters(newCatalogId);
+
+    categoriesList.value = categories;
+    filtersList.value = filters;
+};
+const onAddImageUpload = ({ files }) => {
+    addFormData.value.image = files[0];
+};
+const onAddImageRemove = () => {
+    addFormData.value.image = '';
+};
+
+const tableLoading = ref(false);
+const loadProducts = async () => {
+    tableLoading.value = true;
+
+    productFiltersData.value = await FilterService.fetchProductFilters();
+
+    const dryProducts = await productService.fetchProducts();
+    productsList.value = await productService.formatForTable(
+        dryProducts,
+        {
+            ...allFilters.value
+        },
+        {
+            ...productFiltersData.value
+        }
+    );
+    tableLoading.value = false;
+};
+
+// Remove product
+const removeProduct = ($event, id) => {
+    confirm.require({
+        target: document.activeElement,
+        message: 'Ви дійсно хочете видалити цей товар?',
+        icon: 'pi pi-exclamation-triangle',
+        rejectClass: 'p-button-secondary p-button-outlined p-button-sm',
+        acceptClass: 'p-button-sm',
+        rejectLabel: 'Ні',
+        acceptLabel: 'Так',
+        accept: async () => {
+            const { result } = await productService.removeProductById(id);
+            if (result) {
+                toast.add({ severity: 'info', summary: `Продукт ${id} видалено`, life: 2000 });
+                productsList.value = productsList.value.filter((product) => product.id !== id);
+            }
+        }
+    });
+};
+
+onBeforeMount(async () => {
+    const auth = getAuth();
+    onAuthStateChanged(auth, (user) => {
+        if (!user) {
+            router.push('/auth/login');
+        }
+    });
+
+    initOrderFilters();
+    initCommentsFilters();
+    initProductsFilters();
+
+    allFilters.value = await FilterService.fetchFilters();
+
+    ordersList.value = await orderService.fetchOrders();
+    commentsList.value = await commentsService.fetchComments();
+    catalogsList.value = await productService.fetchCatalogs();
+
+    loadProducts();
+});
+
+// const formatCurrency = (value) => {
+//     return value.toLocaleString('uk-UA', { style: 'currency', currency: 'UAH' });
+// };
 </script>
 
 <template>
-    <div class="grid">
-        <div class="col-12">
-            <div class="card">
-                <Toolbar class="mb-4">
-                    <template v-slot:start>
-                        <div class="my-2">
-                            <Button label="Видалити замовлення" icon="pi pi-trash" severity="danger" @click="confirmDeleteSelected" :disabled="!selectedProducts || !selectedProducts.length" />
-                        </div>
-                    </template>
+    <div>
+        <ConfirmPopup></ConfirmPopup>
+        <Dialog :loading="loading" header="Створити товар" v-model:visible="showAddModal" modal>
+            <form @submit.prevent="submitAddForm" class="flex flex-column mt-2 mb-2 gap-4">
+                <div class="flex flex-column gap-2">
+                    <label for="nameField">Назва</label>
+                    <InputText id="nameField" v-model="addFormData.name" required />
+                </div>
+                <div class="flex flex-column gap-2">
+                    <label for="priceField">Ціна</label>
+                    <InputNumber id="priceField" :minFractionDigits="2" :maxFractionDigits="2" v-model="addFormData.price" required />
+                </div>
+                <div class="flex flex-column gap-2">
+                    <label for="statusField">В наявності</label>
+                    <InputSwitch id="statusField" v-model="addFormData.status" required />
+                </div>
+                <div class="flex flex-column gap-2">
+                    <label for="nameField">Каталог</label>
+                    <Dropdown placeholder="Виберіть каталог" id="sampleField" emptyMessage="Немає даних" v-model="addFormData.catalogId" optionLabel="title" optionValue="id" :options="catalogsList" required @update:modelValue="onCatalogChange">
+                    </Dropdown>
+                </div>
 
-                    <template v-slot:end>
-                        <FileUpload mode="basic" accept="image/*" :maxFileSize="1000000" label="Імпорт" chooseLabel="Імпорт" class="mr-2 inline-block" />
-                        <Button label="Експорт" icon="pi pi-upload" severity="help" @click="exportCSV($event)" />
-                    </template>
-                </Toolbar>
+                <div class="flex flex-column gap-2">
+                    <label for="categoryIdField">Категорія</label>
+                    <Dropdown placeholder="Виберіть категорію" id="categoryIdField" emptyMessage="Немає даних" v-model="addFormData.categoryId" optionLabel="name" optionValue="id" :options="categoriesList" required> </Dropdown>
+                </div>
 
-                <DataTable
-                    ref="dt"
-                    :value="products"
-                    v-model:selection="selectedProducts"
-                    dataKey="id"
-                    :paginator="true"
-                    :rows="10"
-                    :filters="filters"
-                    paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
-                    :rowsPerPageOptions="[5, 10, 25]"
-                    currentPageReportTemplate="Показується {first} з {last} серед всіх {totalRecords} товарів"
-                >
-                    <template #header>
-                        <div class="flex flex-column md:flex-row md:justify-content-between md:align-items-center">
-                            <h5 class="m-0">Замовлення</h5>
-                            <IconField iconPosition="left" class="block mt-2 md:mt-0">
-                                <InputIcon class="pi pi-search" />
-                                <InputText class="w-full sm:w-auto" v-model="filters['global'].value" placeholder="Пошук..." />
-                            </IconField>
-                        </div>
-                    </template>
+                <div v-for="filter of filtersList" :key="filter.id" class="flex flex-column gap-2">
+                    <label :for="`filter_${filter.id}`">{{ filter.name }}</label>
+                    <Dropdown :placeholder="`Виберіть ${filter.name}`" :id="`filter_${filter.id}`" emptyMessage="Немає даних" v-model="addFormData['filters'][`${filter.id}`]" optionLabel="name" optionValue="id" :options="filter.options" required>
+                    </Dropdown>
+                </div>
 
-                    <Column selectionMode="multiple" headerStyle="width: 3rem"></Column>
-                    <Column field="code" header="Код" :sortable="true" headerStyle="width:14%; min-width:10rem;">
-                        <template #body="slotProps">
-                            <span class="p-column-title">Код</span>
-                            {{ slotProps.data.code }}
-                        </template>
-                    </Column>
-                    <Column field="name" header="Ім'я" :sortable="true" headerStyle="width:14%; min-width:10rem;">
-                        <template #body="slotProps">
-                            <span class="p-column-title">Ім'я</span>
-                            {{ slotProps.data.name }}
-                        </template>
-                    </Column>
-                    <Column field="price" header="Ціна" :sortable="true" headerStyle="width:14%; min-width:8rem;">
-                        <template #body="slotProps">
-                            <span class="p-column-title">Ціна</span>
-                            {{ formatCurrency(slotProps.data.price) }}
-                        </template>
-                    </Column>
-                    <Column field="category" header="Точка доставки" :sortable="true" headerStyle="width:14%; min-width:10rem;">
-                        <template #body="slotProps">
-                            <span class="p-column-title">Точка доставки</span>
-                            {{ slotProps.data.category }}
-                        </template>
-                    </Column>
-                    <Column headerStyle="min-width:10rem;">
-                        <template #body="slotProps">
-                            <Button icon="pi pi-pencil" class="mr-2" severity="success" rounded @click="editProduct(slotProps.data)" />
-                            <Button icon="pi pi-trash" class="mt-2" severity="warning" rounded @click="confirmDeleteProduct(slotProps.data)" />
-                        </template>
-                    </Column>
-                </DataTable>
+                <div class="flex flex-column gap-2">
+                    <label for="descriptionField">Опис</label>
+                    <Editor v-model="addFormData.description" editorStyle="height: 120px" />
+                </div>
 
-                <Dialog v-model:visible="productDialog" :style="{ width: '450px' }" header="Product Details" :modal="true" class="p-fluid">
-                    <img :src="'/demo/images/product/' + product.image" :alt="product.image" v-if="product.image" width="150" class="mt-0 mx-auto mb-5 block shadow-2" />
-                    <div class="field">
-                        <label for="name">Name</label>
-                        <InputText id="name" v-model.trim="product.name" required="true" autofocus :invalid="submitted && !product.name" />
-                        <small class="p-invalid" v-if="submitted && !product.name">Name is required.</small>
+                <div class="flex flex-column gap-2">
+                    <label for="imageField">Зображення</label>
+                    <FileUpload name="image[]" mode="basic" customUpload accept="image/*" @select="onAddImageUpload" :fileLimit="1" @clear="onAddImageRemove" chooseLabel="Обрати" :multiple="false" />
+                </div>
+
+                <div class="mt-4 text-right">
+                    <Button label="Створити" :loading="loading" type="submit" icon="pi pi-plus" />
+                </div>
+            </form>
+        </Dialog>
+
+        <DataTable :loading="tableLoading" :filters="productsFilters" v-model:filters="productsFilters" :value="productsList" :paginator="true" :rows="10" dataKey="id" :rowHover="true" showGridlines>
+            <template #empty>
+                <div class="flex align-items-center gap-2"><span>Товарів немає:</span></div>
+            </template>
+            <template #loading>
+                <div class="w-full h-full bg-white flex justify-content-center align-items-center opacity-90">Завантаження...</div>
+            </template>
+            <template #header>
+                <h5>Товари</h5>
+                <div class="flex align-items-center w-full justify-content-between">
+                    <Button label="Новий" icon="pi pi-plus" @click="showAddModal = true"></Button>
+                    <div class="flex justify-content-between flex-column sm:flex-row">
+                        <Button class="mr-2" type="button" icon="pi pi-filter-slash" label="Збити фільтр" outlined @click="initProductsFilters" />
+                        <IconField iconPosition="left">
+                            <InputIcon class="pi pi-search" />
+                            <InputText v-model="productsFilters['global'].value" placeholder="Пошук товару" style="width: 100%" />
+                        </IconField>
                     </div>
-                    <div class="field">
-                        <label for="description">Description</label>
-                        <Textarea id="description" v-model="product.description" required="true" rows="3" cols="20" />
+                </div>
+            </template>
+            <Column field="status" header="№" style="width: 3%" :sortable="true">
+                <template #body="{ data }">
+                    {{ data.id }}
+                </template>
+            </Column>
+            <Column field="status" header="Наявність" style="width: 5%" :sortable="true">
+                <template #body="{ data }">
+                    {{ data.status ? '+' : '-' }}
+                </template>
+            </Column>
+            <Column field="status" header="Каталог" style="width: 5%" :sortable="true">
+                <template #body="{ data }">
+                    {{ data.catalog }}
+                </template>
+            </Column>
+            <Column field="name" header="Назва" style="width: 10%" :sortable="true">
+                <template #body="{ data }">
+                    {{ data.name }}
+                </template>
+            </Column>
+            <Column field="price" header="Ціна" :sortable="true">
+                <template #body="{ data }"> {{ data.price }} грн </template>
+            </Column>
+            <Column field="category" header="Категорія" :sortable="true">
+                <template #body="{ data }"> {{ data.category }}<br /> </template>
+            </Column>
+            <Column field="filters" header="Фільтри" :sortable="true">
+                <template #body="{ data }">
+                    <ul class="flex flex-column gap-2 p-2 m-2">
+                        <li v-for="filter of data.filters" :key="filter.value">
+                            <b>{{ filter.title }}:</b> - {{ filter.value }}
+                        </li>
+                    </ul>
+                </template>
+            </Column>
+            <Column field="image" header="Фото">
+                <template #body="{ data }">
+                    <img width="80" height="100" :src="data.image" style="object-fit: contain" />
+                </template>
+            </Column>
+            <Column field="description" header="Опис">
+                <template #body="{ data }"> <div v-html="data.description"></div> </template>
+            </Column>
+            <Column field="actions" header="Дії">
+                <template #body="{ data }">
+                    <div class="flex flex-wrap gap-2">
+                        <Button icon="pi pi-times" class="p-button-danger" @click="removeProduct($event, data.id)" />
                     </div>
+                </template>
+            </Column>
+        </DataTable>
 
-                    <div class="field">
-                        <label for="inventoryStatus" class="mb-3">Inventory Status</label>
-                        <Dropdown id="inventoryStatus" v-model="product.inventoryStatus" :options="statuses" optionLabel="label" placeholder="Select a Status">
-                            <template #value="slotProps">
-                                <div v-if="slotProps.value && slotProps.value.value">
-                                    <span :class="'product-badge status-' + slotProps.value.value">{{ slotProps.value.label }}</span>
-                                </div>
-                                <div v-else-if="slotProps.value && !slotProps.value.value">
-                                    <span :class="'product-badge status-' + slotProps.value.toLowerCase()">{{ slotProps.value }}</span>
-                                </div>
-                                <span v-else>
-                                    {{ slotProps.placeholder }}
-                                </span>
-                            </template>
-                        </Dropdown>
-                    </div>
+        <div class="mb-8"></div>
 
-                    <div class="field">
-                        <label class="mb-3">Category</label>
-                        <div class="formgrid grid">
-                            <div class="field-radiobutton col-6">
-                                <RadioButton id="category1" name="category" value="Accessories" v-model="product.category" />
-                                <label for="category1">Accessories</label>
-                            </div>
-                            <div class="field-radiobutton col-6">
-                                <RadioButton id="category2" name="category" value="Clothing" v-model="product.category" />
-                                <label for="category2">Clothing</label>
-                            </div>
-                            <div class="field-radiobutton col-6">
-                                <RadioButton id="category3" name="category" value="Electronics" v-model="product.category" />
-                                <label for="category3">Electronics</label>
-                            </div>
-                            <div class="field-radiobutton col-6">
-                                <RadioButton id="category4" name="category" value="Fitness" v-model="product.category" />
-                                <label for="category4">Fitness</label>
-                            </div>
-                        </div>
-                    </div>
+        <DataTable :filters="orderFilters" v-model:filters="orderFilters" :value="ordersList" :paginator="true" :rows="10" dataKey="id" :rowHover="true" showGridlines>
+            <template #header>
+                <h5>Замовлення</h5>
+                <div class="flex flex-wrap gap-2 justify-content-between flex-column sm:flex-row">
+                    <Button type="button" icon="pi pi-filter-slash" label="Збити фільтр" outlined @click="initOrderFilters" />
+                    <IconField iconPosition="left">
+                        <InputIcon class="pi pi-search" />
+                        <InputText v-model="orderFilters['global'].value" placeholder="Пошук" style="width: 100%" />
+                    </IconField>
+                </div>
+            </template>
+            <template #empty> Замовлень не знайдено. </template>
+            <template #loading> Зачекайте... </template>
 
-                    <div class="formgrid grid">
-                        <div class="field col">
-                            <label for="price">Price</label>
-                            <InputNumber id="price" v-model="product.price" mode="currency" currency="UAH" locale="en-US" :invalid="submitted && !product.price" :required="true" />
-                            <small class="p-invalid" v-if="submitted && !product.price">Price is required.</small>
-                        </div>
-                        <div class="field col">
-                            <label for="quantity">Quantity</label>
-                            <InputNumber id="quantity" v-model="product.quantity" integeronly />
-                        </div>
+            <Column field="total" header="Сума" :sortable="true">
+                <template #body="{ data }"> {{ data.total }} грн </template>
+            </Column>
+            <Column field="orderDate" header="Дата" :sortable="true">
+                <template #body="{ data }">
+                    {{ data.orderDate }}
+                </template>
+            </Column>
+            <Column field="name" header="Ім'я клієнта">
+                <template #body="{ data }">
+                    {{ data.client }}
+                </template>
+            </Column>
+            <Column field="phone" header="Номер клієнта">
+                <template #body="{ data }">
+                    {{ data.phone }}
+                </template>
+            </Column>
+            <Column field="address" header="Адреса доставки">
+                <template #body="{ data }">
+                    {{ [data.city, data.post, data.department].join(', ') }}
+                </template>
+            </Column>
+            <Column field="products" header="Товари">
+                <template #body="{ data }">
+                    <div :key="product.id" v-for="product of data.products">
+                        <b>№</b> {{ product.id }}, <b>Назва:</b> {{ product.name }}, <b>Кількість:</b> {{ product.count }}, <b>Ціна:</b> {{ product.price }} грн
+                        <hr />
                     </div>
-                    <template #footer>
-                        <Button label="Cancel" icon="pi pi-times" text="" @click="hideDialog" />
-                        <Button label="Save" icon="pi pi-check" text="" @click="saveProduct" />
-                    </template>
-                </Dialog>
+                </template>
+            </Column>
+            <Column field="actions" header="Дії">
+                <template #body>
+                    <div class="flex flex-wrap gap-2">
+                        <Button icon="pi pi-check" class="p-button-success" />
+                        <Button icon="pi pi-times" class="p-button-danger" />
+                    </div>
+                </template>
+            </Column>
+        </DataTable>
 
-                <Dialog v-model:visible="deleteProductDialog" :style="{ width: '450px' }" header="Confirm" :modal="true">
-                    <div class="flex align-items-center justify-content-center">
-                        <i class="pi pi-exclamation-triangle mr-3" style="font-size: 2rem" />
-                        <span v-if="product"
-                            >Ви дійсно хочете видалити <b>{{ product.name }}</b
-                            >?</span
-                        >
-                    </div>
-                    <template #footer>
-                        <Button label="Ні" icon="pi pi-times" text @click="deleteProductDialog = false" />
-                        <Button label="Так" icon="pi pi-check" text @click="deleteProduct" />
-                    </template>
-                </Dialog>
+        <div class="mb-8"></div>
 
-                <Dialog v-model:visible="deleteProductsDialog" :style="{ width: '450px' }" header="Підтвердити" :modal="true">
-                    <div class="flex align-items-center justify-content-center">
-                        <i class="pi pi-exclamation-triangle mr-3" style="font-size: 2rem" />
-                        <span v-if="product">Ви впевнені що хочете видалити замовлення?</span>
-                    </div>
-                    <template #footer>
-                        <Button label="No" icon="pi pi-times" text @click="deleteProductsDialog = false" />
-                        <Button label="Yes" icon="pi pi-check" text @click="deleteSelectedProducts" />
-                    </template>
-                </Dialog>
-            </div>
-        </div>
+        <DataTable :filters="commentsFilters" v-model:filters="commentsFilters" :value="commentsList" :paginator="true" :rows="10" dataKey="id" :rowHover="true" showGridlines>
+            <template #header>
+                <h5>Відгуки</h5>
+                <div class="flex justify-content-between flex-column sm:flex-row">
+                    <Button type="button" icon="pi pi-filter-slash" label="Збити фільтр" outlined @click="initCommentsFilters" />
+                    <IconField iconPosition="left">
+                        <InputIcon class="pi pi-search" />
+                        <InputText v-model="commentsFilters['global'].value" placeholder="Пошук" style="width: 100%" />
+                    </IconField>
+                </div>
+            </template>
+            <template #empty> Відгуків немає. </template>
+            <template #loading> Зачекайте... </template>
+
+            <Column field="client" header="Клієнт">
+                <template #body="{ data }"> {{ data.client }}</template>
+            </Column>
+            <Column field="date" header="Дата" :sortable="true">
+                <template #body="{ data }">
+                    {{ data.date }}
+                </template>
+            </Column>
+            <Column field="rating" :sortable="true" header="Оцінка">
+                <template #body="{ data }">
+                    {{ data.rating }}
+                </template>
+            </Column>
+            <Column field="message" header="Повідомлення">
+                <template #body="{ data }">
+                    {{ data.message }}
+                </template>
+            </Column>
+            <Column field="remove" header="Видалити">
+                <template #body>
+                    <Button icon="pi pi-times" class="p-button-danger" />
+                </template>
+            </Column>
+        </DataTable>
     </div>
 </template>

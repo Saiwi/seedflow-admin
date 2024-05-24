@@ -1,0 +1,76 @@
+@startuml
+
+entity Order {
+  * id : Integer
+  --
+  + profileId : Integer
+  orderDate : Date
+  total : Decimal
+}
+
+entity OrderItem {
+  * id : Integer
+  --
+  + orderId : Integer
+  + productId : Integer
+  quantity : Integer
+}
+
+entity Profile {
+  * id : Integer
+  --
+  name: String
+  phone: String
+  email: String
+  password: String
+}
+
+entity Catalog {
+  * id : Integer
+  --
+  name: String
+}
+
+entity Category {
+  * id : Integer
+  --
+  name: String
+  catalogId: Integer
+}
+
+entity Filter {
+  * id : Integer
+  --
+  + catalogId : Integer
+  name : String
+}
+
+entity Product {
+  * id : Integer
+  --
+  name : String
+  description : Text
+  image: String
+  status: Boolean
+  price : Decimal
+  categoryId : Integer
+}
+
+entity ProductFilter {
+  * id : Integer
+  --
+  + productId : Integer
+  + filterId : Integer
+  value : String
+}
+
+Category ||--o{ Catalog: has
+Catalog ||--o{ Filter : has
+Product ||--o{ ProductFilter : has
+Filter ||--o{ ProductFilter : has
+Order ||--o{ OrderItem : contains
+Product ||--o{ OrderItem : references
+Product ||--o{ Category: belongs
+Profile ||--o{ Order : makes
+
+@enduml

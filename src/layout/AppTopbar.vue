@@ -1,7 +1,10 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { useLayout } from '@/layout/composables/layout';
+import { signOut, getAuth } from 'firebase/auth';
+import { useRouter } from 'vue-router';
 
+const router = useRouter();
 const { layoutConfig } = useLayout();
 
 const outsideClickListener = ref(null);
@@ -22,8 +25,12 @@ const logoUrl = computed(() => {
 const onTopBarMenuButton = () => {
     topbarMenuActive.value = !topbarMenuActive.value;
 };
-const onSettingsClick = () => {
+const signOutClick = () => {
     topbarMenuActive.value = false;
+    const auth = getAuth();
+    signOut(auth).then(() => {
+        router.push('/auth/login');
+    });
     // router.push('/documentation');
 };
 const topbarMenuClasses = computed(() => {
@@ -69,7 +76,7 @@ const isOutsideClicked = (event) => {
         </button>
 
         <div class="layout-topbar-menu" :class="topbarMenuClasses">
-            <button @click="onSettingsClick()" class="p-link layout-topbar-button">
+            <button @click="signOutClick()" class="p-link layout-topbar-button">
                 <i class="pi pi-sign-out"></i>
                 <span>Вийти</span>
             </button>

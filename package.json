@@ -13,6 +13,9 @@
         "primeflex": "^3.3.1",
         "primeicons": "^6.0.1",
         "primevue": "3.49.1",
+        "quill": "^2.0.2",
+        "validate": "^5.2.0",
+        "validator": "^13.12.0",
         "vue": "^3.2.41",
         "vue-router": "^4.1.5"
     },
