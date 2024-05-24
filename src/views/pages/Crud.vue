@@ -246,9 +246,9 @@ onBeforeMount(async () => {
             </template>
             <template #header>
                 <h5>Товари</h5>
-                <div class="flex align-items-center w-full justify-content-between">
+                <div class="flex align-items-center w-full justify-content-between flex-wrap gap-2">
                     <Button label="Новий" icon="pi pi-plus" @click="showAddModal = true"></Button>
-                    <div class="flex justify-content-between flex-column sm:flex-row">
+                    <div class="flex justify-content-between flex-column sm:flex-row flex-wrap gap-2">
                         <Button class="mr-2" type="button" icon="pi pi-filter-slash" label="Збити фільтр" outlined @click="initProductsFilters" />
                         <IconField iconPosition="left">
                             <InputIcon class="pi pi-search" />
@@ -314,7 +314,7 @@ onBeforeMount(async () => {
         <DataTable :filters="orderFilters" v-model:filters="orderFilters" :value="ordersList" :paginator="true" :rows="10" dataKey="id" :rowHover="true" showGridlines>
             <template #header>
                 <h5>Замовлення</h5>
-                <div class="flex flex-wrap gap-2 justify-content-between flex-column sm:flex-row">
+                <div class="flex flex-wrap gap-2 justify-content-between flex-column sm:flex-row flex-wrap gap-2">
                     <Button type="button" icon="pi pi-filter-slash" label="Збити фільтр" outlined @click="initOrderFilters" />
                     <IconField iconPosition="left">
                         <InputIcon class="pi pi-search" />
@@ -371,7 +371,7 @@ onBeforeMount(async () => {
         <DataTable :filters="commentsFilters" v-model:filters="commentsFilters" :value="commentsList" :paginator="true" :rows="10" dataKey="id" :rowHover="true" showGridlines>
             <template #header>
                 <h5>Відгуки</h5>
-                <div class="flex justify-content-between flex-column sm:flex-row">
+                <div class="flex justify-content-between flex-column sm:flex-row flex-wrap gap-2">
                     <Button type="button" icon="pi pi-filter-slash" label="Збити фільтр" outlined @click="initCommentsFilters" />
                     <IconField iconPosition="left">
                         <InputIcon class="pi pi-search" />
