@@ -160,6 +160,24 @@ const removeProduct = ($event, id) => {
         }
     });
 };
+const removeComment = (id) => {
+    confirm.require({
+        target: document.activeElement,
+        message: 'Ви дійсно хочете видалити коментар?',
+        icon: 'pi pi-exclamation-triangle',
+        rejectClass: 'p-button-secondary p-button-outlined p-button-sm',
+        acceptClass: 'p-button-sm',
+        rejectLabel: 'Ні',
+        acceptLabel: 'Так',
+        accept: async () => {
+            const { result } = await commentsService.removeCommentById(id);
+            if (result) {
+                toast.add({ severity: 'info', summary: `Коментар ${id} видалено`, life: 2000 });
+                commentsList.value = commentsList.value.filter((comment) => comment.id !== id);
+            }
+        }
+    });
+};
 
 onBeforeMount(async () => {
     const auth = getAuth();
@@ -181,15 +199,12 @@ onBeforeMount(async () => {
 
     loadProducts();
 });
-
-// const formatCurrency = (value) => {
-//     return value.toLocaleString('uk-UA', { style: 'currency', currency: 'UAH' });
-// };
 </script>
 
 <template>
     <div>
-        <ConfirmDialog key="productRemove"></ConfirmDialog>
+        <ConfirmDialog key="removeCommon"></ConfirmDialog>
+
         <Dialog :loading="loading" header="Створити товар" v-model:visible="showAddModal" modal>
             <form @submit.prevent="submitAddForm" class="flex flex-column mt-2 mb-2 gap-4">
                 <div class="flex flex-column gap-2">
@@ -382,8 +397,11 @@ onBeforeMount(async () => {
             <template #empty> Відгуків немає. </template>
             <template #loading> Зачекайте... </template>
 
-            <Column field="client" header="Клієнт">
-                <template #body="{ data }"> {{ data.client }}</template>
+            <Column field="id" header="№">
+                <template #body="{ data }"> {{ data.id }}</template>
+            </Column>
+            <Column field="author" header="Клієнт">
+                <template #body="{ data }"> {{ data.author }}</template>
             </Column>
             <Column field="date" header="Дата" :sortable="true">
                 <template #body="{ data }">
@@ -401,8 +419,8 @@ onBeforeMount(async () => {
                 </template>
             </Column>
             <Column field="remove" header="Видалити">
-                <template #body>
-                    <Button icon="pi pi-times" class="p-button-danger" />
+                <template #body="{ data }">
+                    <Button @click="removeComment(data.id)" icon="pi pi-times" class="p-button-danger" />
                 </template>
             </Column>
         </DataTable>

@@ -1,18 +1,17 @@
+import { getDocs, collection, deleteDoc, doc } from 'firebase/firestore';
+
 export default class CommentsService {
     static async fetchComments() {
-        return [
-            {
-                client: 'Client name',
-                date: '2024-05-23',
-                rating: 4.45,
-                message: 'Нормальне насіння'
-            },
-            {
-                client: 'Client name',
-                date: '2024-05-23',
-                rating: 4.45,
-                message: 'Нормальне насіння'
-            },
-        ];
+        const commentsRef = await collection(window.db, 'comments');
+        const commentsSnap = await getDocs(commentsRef);
+
+        return commentsSnap.docs.map((doc) => ({ ...doc.data(), id: doc.id }));
+    }
+    static async removeCommentById(id) {
+        const commentRef = await doc(window.db, 'comments', id);
+
+        await deleteDoc(commentRef);
+
+        return { result: true };
     }
 }
