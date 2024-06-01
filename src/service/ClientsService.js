@@ -1,5 +1,4 @@
 import { getDocs, collection, query } from 'firebase/firestore';
-
 export default class ClientsService {
     static async fetchClients() {
         const filterCollection = collection(window.db, 'profiles');
@@ -9,7 +8,8 @@ export default class ClientsService {
 
         return snapshot.docs.map((document) => {
             const count = orders.docs.filter((order) => order.data().profileId == document.id);
-            return { ...document.data(), id: document.id, ordersCount: count.length };
-        });
+            const sum = orders.docs.reduce((currentValue, order) => currentValue += order.data().total, 0);
+            return { ...document.data(), id: document.id, ordersCount: count.length, sum };
+        }).filter((client) => !client.isAdmin);
     }
 }

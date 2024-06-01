@@ -1,5 +1,5 @@
 <script setup>
-import { onBeforeMount, ref } from 'vue';
+import { onBeforeMount, ref, reactive } from 'vue';
 import { FilterMatchMode } from 'primevue/api';
 import orderService from '@/service/OrderService';
 import productService from '@/service/ProductService';
@@ -11,6 +11,10 @@ import { useRouter } from 'vue-router';
 import Editor from 'primevue/editor';
 import { useToast } from 'primevue/usetoast';
 import { useConfirm } from 'primevue/useconfirm';
+
+import TabView from 'primevue/tabview';
+import TabPanel from 'primevue/tabpanel';
+import CategoriesService from '../../service/CategoriesService';
 
 const confirm = useConfirm();
 
@@ -31,6 +35,16 @@ const productsList = ref([]);
 
 const allFilters = ref([]);
 const productFiltersData = ref([]);
+
+const promoData = reactive({
+    text: '',
+    start: null,
+    end: null
+});
+const savePromo = async () => {
+    await CategoriesService.updatePromo({ ...promoData });
+    showSuccess('Дані акції збережено');
+};
 
 const router = useRouter();
 
@@ -56,7 +70,7 @@ const initClientsFilters = () => {
 };
 
 const showSuccess = (text) => {
-    toast.add({ severity: 'info', summary: 'Виконано', detail: text, life: 3000 });
+    toast.add({ severity: 'success', summary: 'Виконано', detail: text, life: 3000 });
 };
 const showError = (text) => {
     toast.add({ severity: 'error', summary: 'Помилка', detail: text, life: 3000 });
@@ -249,18 +263,34 @@ onBeforeMount(async () => {
     initProductsFilters();
     initClientsFilters();
 
-    allFilters.value = await FilterService.fetchFilters();
+    FilterService.fetchFilters().then((response) => {
+        allFilters.value = response;
+    });
 
     ordersLoading.value = true;
-    ordersList.value = await orderService.fetchOrders();
-    ordersLoading.value = false;
+    orderService.fetchOrders().then((response) => {
+        ordersList.value = response;
+        ordersLoading.value = false;
+    });
 
     commentsLoading.value = true;
-    commentsList.value = await commentsService.fetchComments();
-    commentsLoading.value = false;
+    commentsService.fetchComments().then((data) => {
+        commentsList.value = data;
+        commentsLoading.value = false;
+    });
 
-    catalogsList.value = await productService.fetchCatalogs();
-    clientsList.value = await clientsService.fetchClients();
+    productService.fetchCatalogs().then((data) => {
+        catalogsList.value = data;
+    });
+    clientsService.fetchClients().then((data) => {
+        clientsList.value = data;
+    });
+
+    CategoriesService.fetchPromo().then(({ endDate, startDate, text }) => {
+        promoData.start = startDate?.toDate();
+        promoData.end = endDate?.toDate();
+        promoData.text = text;
+    });
 
     loadProducts();
 });
@@ -317,208 +347,225 @@ onBeforeMount(async () => {
             </form>
         </Dialog>
 
-        <div class="mb-8"></div>
+        <TabView>
+            <TabPanel header="Замовлення">
+                <DataTable :loading="ordersLoading" :filters="orderFilters" v-model:filters="orderFilters" :value="ordersList" :paginator="true" :rows="10" dataKey="id" :rowHover="true" showGridlines>
+                    <template #header>
+                        <div class="flex flex-wrap gap-2 justify-content-between flex-column sm:flex-row flex-wrap gap-2">
+                            <Button type="button" icon="pi pi-filter-slash" label="Збити фільтр" outlined @click="initOrderFilters" />
+                            <IconField iconPosition="left">
+                                <InputIcon class="pi pi-search" />
+                                <InputText v-model="orderFilters['global'].value" placeholder="Пошук" style="width: 100%" />
+                            </IconField>
+                        </div>
+                    </template>
+                    <template #empty> Замовлень не знайдено. </template>
+                    <template #loading> Зачекайте... </template>
 
-        <DataTable :loading="ordersLoading" :filters="orderFilters" v-model:filters="orderFilters" :value="ordersList" :paginator="true" :rows="10" dataKey="id" :rowHover="true" showGridlines>
-            <template #header>
-                <h5>Замовлення</h5>
-                <div class="flex flex-wrap gap-2 justify-content-between flex-column sm:flex-row flex-wrap gap-2">
-                    <Button type="button" icon="pi pi-filter-slash" label="Збити фільтр" outlined @click="initOrderFilters" />
-                    <IconField iconPosition="left">
-                        <InputIcon class="pi pi-search" />
-                        <InputText v-model="orderFilters['global'].value" placeholder="Пошук" style="width: 100%" />
-                    </IconField>
+                    <Column field="total" header="Сума" :sortable="true">
+                        <template #body="{ data }"> ₴{{ data.total.toFixed(2) }} </template>
+                    </Column>
+                    <Column field="orderDate" header="Дата" :sortable="true">
+                        <template #body="{ data }">
+                            {{ data.orderDate.toLocaleDateString('uk-UA') }}
+                        </template>
+                    </Column>
+                    <Column field="name" header="Ім'я клієнта">
+                        <template #body="{ data }">
+                            {{ data.clientName }}
+                        </template>
+                    </Column>
+                    <Column field="phone" header="Номер клієнта">
+                        <template #body="{ data }">
+                            {{ data.clientPhone }}
+                        </template>
+                    </Column>
+                    <Column field="address" header="Адреса доставки">
+                        <template #body="{ data }">
+                            {{ [data.city, data.post === 'ukr' ? 'Укр пошта' : 'Нова пошта', `№${data.department}`].join(', ') }}
+                        </template>
+                    </Column>
+                    <Column field="products" header="Товари">
+                        <template #body="{ data }">
+                            <div :key="item.id" v-for="item of data.items">
+                                <b>Назва:</b> {{ item.product.name }}, <b>Кількість:</b> {{ item.quantity }}, <b>Ціна:</b> {{ item.product.price }} грн
+                                <hr />
+                            </div>
+                        </template>
+                    </Column>
+                    <Column field="actions" header="Дії">
+                        <template #body="{ data }">
+                            <div class="flex flex-wrap gap-2">
+                                <Button icon="pi pi-check" v-if="!data.complete" class="p-button-info" @click="completeOrder(data.id)" />
+                                <Button icon="pi pi-check" disabled v-else class="p-button-success" />
+                                <Button icon="pi pi-times" class="p-button-danger" @click="removeOrder(data.id)" />
+                            </div>
+                        </template>
+                    </Column>
+                </DataTable>
+            </TabPanel>
+            <TabPanel header="Товари">
+                <DataTable :loading="tableLoading" :filters="productsFilters" v-model:filters="productsFilters" :value="productsList" :paginator="true" :rows="10" dataKey="id" :rowHover="true" showGridlines>
+                    <template #empty>
+                        <div class="flex align-items-center gap-2"><span>Товарів немає</span></div>
+                    </template>
+                    <template #loading>
+                        <div class="w-full h-full bg-white flex justify-content-center align-items-center opacity-90">Завантаження...</div>
+                    </template>
+                    <template #header>
+                        <div class="flex align-items-center w-full justify-content-between flex-wrap gap-2">
+                            <Button label="Новий" icon="pi pi-plus" @click="showAddModal = true"></Button>
+                            <div class="flex justify-content-between flex-column sm:flex-row flex-wrap gap-2">
+                                <Button class="mr-2" type="button" icon="pi pi-filter-slash" label="Збити фільтр" outlined @click="initProductsFilters" />
+                                <IconField iconPosition="left">
+                                    <InputIcon class="pi pi-search" />
+                                    <InputText v-model="productsFilters['global'].value" placeholder="Пошук товару" style="width: 100%" />
+                                </IconField>
+                            </div>
+                        </div>
+                    </template>
+                    <Column field="status" header="№" style="width: 3%" :sortable="true">
+                        <template #body="{ data }">
+                            {{ data.id }}
+                        </template>
+                    </Column>
+                    <Column field="status" header="Наявність" style="width: 5%" :sortable="true">
+                        <template #body="{ data }">
+                            {{ data.status ? '+' : '-' }}
+                        </template>
+                    </Column>
+                    <Column field="status" header="Каталог" style="width: 5%" :sortable="true">
+                        <template #body="{ data }">
+                            {{ data.catalog }}
+                        </template>
+                    </Column>
+                    <Column field="name" header="Назва" style="width: 10%" :sortable="true">
+                        <template #body="{ data }">
+                            {{ data.name }}
+                        </template>
+                    </Column>
+                    <Column field="price" header="Ціна" :sortable="true">
+                        <template #body="{ data }"> {{ data.price }} грн </template>
+                    </Column>
+                    <Column field="category" header="Категорія" :sortable="true">
+                        <template #body="{ data }"> {{ data.category }}<br /> </template>
+                    </Column>
+                    <Column field="filters" header="Фільтри" :sortable="true">
+                        <template #body="{ data }">
+                            <ul class="flex flex-column gap-2 p-2 m-2">
+                                <li v-for="filter of data.filters" :key="filter.value">
+                                    <b>{{ filter.title }}:</b> - {{ filter.value }}
+                                </li>
+                            </ul>
+                        </template>
+                    </Column>
+                    <Column field="image" header="Фото">
+                        <template #body="{ data }">
+                            <img width="80" height="100" :src="data.image" style="object-fit: contain" />
+                        </template>
+                    </Column>
+                    <Column field="description" header="Опис">
+                        <template #body="{ data }"> <div v-html="data.description"></div> </template>
+                    </Column>
+                    <Column field="actions" header="Дії">
+                        <template #body="{ data }">
+                            <div class="flex flex-wrap gap-2">
+                                <Button icon="pi pi-times" class="p-button-danger" @click="removeProduct($event, data.id)" />
+                            </div>
+                        </template>
+                    </Column>
+                </DataTable>
+            </TabPanel>
+            <TabPanel header="Відгуки">
+                <DataTable :loading="commentsLoading" :filters="commentsFilters" v-model:filters="commentsFilters" :value="commentsList" :paginator="true" :rows="10" dataKey="id" :rowHover="true" showGridlines>
+                    <template #header>
+                        <div class="flex justify-content-between flex-column sm:flex-row flex-wrap gap-2">
+                            <Button type="button" icon="pi pi-filter-slash" label="Збити фільтр" outlined @click="initCommentsFilters" />
+                            <IconField iconPosition="left">
+                                <InputIcon class="pi pi-search" />
+                                <InputText v-model="commentsFilters['global'].value" placeholder="Пошук" style="width: 100%" />
+                            </IconField>
+                        </div>
+                    </template>
+                    <template #empty> Відгуків немає. </template>
+                    <template #loading> <div class="w-full h-full bg-white flex justify-content-center align-items-center opacity-90">Завантаження...</div> </template>
+
+                    <Column field="id" header="№">
+                        <template #body="{ data }"> {{ data.id }}</template>
+                    </Column>
+                    <Column field="author" header="Клієнт">
+                        <template #body="{ data }"> {{ data.author }}</template>
+                    </Column>
+                    <Column field="date" header="Дата" :sortable="true">
+                        <template #body="{ data }">
+                            {{ data.date }}
+                        </template>
+                    </Column>
+                    <Column field="rating" :sortable="true" header="Оцінка">
+                        <template #body="{ data }">
+                            {{ data.rating }}
+                        </template>
+                    </Column>
+                    <Column field="message" header="Повідомлення">
+                        <template #body="{ data }">
+                            {{ data.message }}
+                        </template>
+                    </Column>
+                    <Column field="remove" header="Видалити">
+                        <template #body="{ data }">
+                            <Button @click="removeComment(data.id)" icon="pi pi-times" class="p-button-danger" />
+                        </template>
+                    </Column>
+                </DataTable>
+            </TabPanel>
+            <TabPanel header="Клієнти">
+                <DataTable :filters="clientsFilters" v-model:filters="clientsFilters" :value="clientsList" :paginator="true" :rows="10" dataKey="id" :rowHover="true" showGridlines>
+                    <template #header>
+                        <div class="flex justify-content-between flex-column sm:flex-row flex-wrap gap-2">
+                            <Button type="button" icon="pi pi-filter-slash" label="Збити фільтр" outlined @click="initCommentsFilters" />
+                            <IconField iconPosition="left">
+                                <InputIcon class="pi pi-search" />
+                                <InputText v-model="commentsFilters['global'].value" placeholder="Пошук" style="width: 100%" />
+                            </IconField>
+                        </div>
+                    </template>
+                    <template #empty> Клієнтів немає. </template>
+                    <template #loading> <div class="w-full h-full bg-white flex justify-content-center align-items-center opacity-90">Завантаження...</div> </template>
+
+                    <Column field="id" header="№ Профіля">
+                        <template #body="{ data }"> {{ data.id }}</template>
+                    </Column>
+                    <Column field="name" header="Ім'я">
+                        <template #body="{ data }"> {{ data.name }}</template>
+                    </Column>
+                    <Column field="phone" header="Номер телефону">
+                        <template #body="{ data }"> {{ data.phone }}</template>
+                    </Column>
+                    <Column field="ordersCount" header="К-сть замовлень">
+                        <template #body="{ data }"> {{ data.ordersCount }}</template>
+                    </Column>
+                    <Column field="sum" header="Придбав на суму">
+                        <template #body="{ data }"> {{ f(data.sum) }}</template>
+                    </Column>
+                </DataTable>
+            </TabPanel>
+            <TabPanel header="Акція">
+                <h4>Налаштування акції</h4>
+                <div style="max-width: 700px">
+                    <Textarea autoResize placeholder="Текст акції" v-model="promoData.text" rows="2" cols="90" />
+                    <InputGroup class="mt-2">
+                        <InputGroupAddon>
+                            <i class="pi pi-calendar"></i>
+                        </InputGroupAddon>
+                        <Calendar v-model="promoData.start" dateFormat="dd.mm.yy" class="p-calendar-w-btn" placeholder="Початок акції" />
+                        <InputGroupAddon>
+                            <i class="pi pi-calendar"></i>
+                        </InputGroupAddon>
+                        <Calendar v-model="promoData.end" dateFormat="dd.mm.yy" class="p-calendar-w-btn" placeholder="Кінець акції" />
+                    </InputGroup>
+                    <Button class="mt-2" label="Зберегти" @click="savePromo" />
                 </div>
-            </template>
-            <template #empty> Замовлень не знайдено. </template>
-            <template #loading> Зачекайте... </template>
-
-            <Column field="total" header="Сума" :sortable="true">
-                <template #body="{ data }"> ₴{{ data.total.toFixed(2) }} </template>
-            </Column>
-            <Column field="orderDate" header="Дата" :sortable="true">
-                <template #body="{ data }">
-                    {{ data.orderDate.toLocaleDateString('uk-UA') }}
-                </template>
-            </Column>
-            <Column field="name" header="Ім'я клієнта">
-                <template #body="{ data }">
-                    {{ data.clientName }}
-                </template>
-            </Column>
-            <Column field="phone" header="Номер клієнта">
-                <template #body="{ data }">
-                    {{ data.clientPhone }}
-                </template>
-            </Column>
-            <Column field="address" header="Адреса доставки">
-                <template #body="{ data }">
-                    {{ [data.city, data.post === 'ukr' ? 'Укр пошта' : 'Нова пошта', `№${data.department}`].join(', ') }}
-                </template>
-            </Column>
-            <Column field="products" header="Товари">
-                <template #body="{ data }">
-                    <div :key="item.id" v-for="item of data.items">
-                        <b>№</b> <b>Назва:</b> {{ item.product.name }}, <b>Кількість:</b> {{ item.quantity }}, <b>Ціна:</b> {{ item.product.price }} грн
-                        <hr />
-                    </div>
-                </template>
-            </Column>
-            <Column field="actions" header="Дії">
-                <template #body="{ data }">
-                    <div class="flex flex-wrap gap-2">
-                        <Button icon="pi pi-check" v-if="!data.complete" class="p-button-info" @click="completeOrder(data.id)" />
-                        <Button icon="pi pi-check" disabled v-else class="p-button-success" />
-                        <Button icon="pi pi-times" class="p-button-danger" @click="removeOrder(data.id)" />
-                    </div>
-                </template>
-            </Column>
-        </DataTable>
-
-        <DataTable :loading="tableLoading" :filters="productsFilters" v-model:filters="productsFilters" :value="productsList" :paginator="true" :rows="10" dataKey="id" :rowHover="true" showGridlines>
-            <template #empty>
-                <div class="flex align-items-center gap-2"><span>Товарів немає</span></div>
-            </template>
-            <template #loading>
-                <div class="w-full h-full bg-white flex justify-content-center align-items-center opacity-90">Завантаження...</div>
-            </template>
-            <template #header>
-                <h5>Товари</h5>
-                <div class="flex align-items-center w-full justify-content-between flex-wrap gap-2">
-                    <Button label="Новий" icon="pi pi-plus" @click="showAddModal = true"></Button>
-                    <div class="flex justify-content-between flex-column sm:flex-row flex-wrap gap-2">
-                        <Button class="mr-2" type="button" icon="pi pi-filter-slash" label="Збити фільтр" outlined @click="initProductsFilters" />
-                        <IconField iconPosition="left">
-                            <InputIcon class="pi pi-search" />
-                            <InputText v-model="productsFilters['global'].value" placeholder="Пошук товару" style="width: 100%" />
-                        </IconField>
-                    </div>
-                </div>
-            </template>
-            <Column field="status" header="№" style="width: 3%" :sortable="true">
-                <template #body="{ data }">
-                    {{ data.id }}
-                </template>
-            </Column>
-            <Column field="status" header="Наявність" style="width: 5%" :sortable="true">
-                <template #body="{ data }">
-                    {{ data.status ? '+' : '-' }}
-                </template>
-            </Column>
-            <Column field="status" header="Каталог" style="width: 5%" :sortable="true">
-                <template #body="{ data }">
-                    {{ data.catalog }}
-                </template>
-            </Column>
-            <Column field="name" header="Назва" style="width: 10%" :sortable="true">
-                <template #body="{ data }">
-                    {{ data.name }}
-                </template>
-            </Column>
-            <Column field="price" header="Ціна" :sortable="true">
-                <template #body="{ data }"> {{ data.price }} грн </template>
-            </Column>
-            <Column field="category" header="Категорія" :sortable="true">
-                <template #body="{ data }"> {{ data.category }}<br /> </template>
-            </Column>
-            <Column field="filters" header="Фільтри" :sortable="true">
-                <template #body="{ data }">
-                    <ul class="flex flex-column gap-2 p-2 m-2">
-                        <li v-for="filter of data.filters" :key="filter.value">
-                            <b>{{ filter.title }}:</b> - {{ filter.value }}
-                        </li>
-                    </ul>
-                </template>
-            </Column>
-            <Column field="image" header="Фото">
-                <template #body="{ data }">
-                    <img width="80" height="100" :src="data.image" style="object-fit: contain" />
-                </template>
-            </Column>
-            <Column field="description" header="Опис">
-                <template #body="{ data }"> <div v-html="data.description"></div> </template>
-            </Column>
-            <Column field="actions" header="Дії">
-                <template #body="{ data }">
-                    <div class="flex flex-wrap gap-2">
-                        <Button icon="pi pi-times" class="p-button-danger" @click="removeProduct($event, data.id)" />
-                    </div>
-                </template>
-            </Column>
-        </DataTable>
-
-        <div class="mb-8"></div>
-
-        <DataTable :loading="commentsLoading" :filters="commentsFilters" v-model:filters="commentsFilters" :value="commentsList" :paginator="true" :rows="10" dataKey="id" :rowHover="true" showGridlines>
-            <template #header>
-                <h5>Відгуки</h5>
-                <div class="flex justify-content-between flex-column sm:flex-row flex-wrap gap-2">
-                    <Button type="button" icon="pi pi-filter-slash" label="Збити фільтр" outlined @click="initCommentsFilters" />
-                    <IconField iconPosition="left">
-                        <InputIcon class="pi pi-search" />
-                        <InputText v-model="commentsFilters['global'].value" placeholder="Пошук" style="width: 100%" />
-                    </IconField>
-                </div>
-            </template>
-            <template #empty> Відгуків немає. </template>
-            <template #loading> <div class="w-full h-full bg-white flex justify-content-center align-items-center opacity-90">Завантаження...</div> </template>
-
-            <Column field="id" header="№">
-                <template #body="{ data }"> {{ data.id }}</template>
-            </Column>
-            <Column field="author" header="Клієнт">
-                <template #body="{ data }"> {{ data.author }}</template>
-            </Column>
-            <Column field="date" header="Дата" :sortable="true">
-                <template #body="{ data }">
-                    {{ data.date }}
-                </template>
-            </Column>
-            <Column field="rating" :sortable="true" header="Оцінка">
-                <template #body="{ data }">
-                    {{ data.rating }}
-                </template>
-            </Column>
-            <Column field="message" header="Повідомлення">
-                <template #body="{ data }">
-                    {{ data.message }}
-                </template>
-            </Column>
-            <Column field="remove" header="Видалити">
-                <template #body="{ data }">
-                    <Button @click="removeComment(data.id)" icon="pi pi-times" class="p-button-danger" />
-                </template>
-            </Column>
-        </DataTable>
-
-        <div class="mb-8"></div>
-
-        <DataTable :filters="clientsFilters" v-model:filters="clientsFilters" :value="clientsList" :paginator="true" :rows="10" dataKey="id" :rowHover="true" showGridlines>
-            <template #header>
-                <h5>Клієнти</h5>
-                <div class="flex justify-content-between flex-column sm:flex-row flex-wrap gap-2">
-                    <Button type="button" icon="pi pi-filter-slash" label="Збити фільтр" outlined @click="initCommentsFilters" />
-                    <IconField iconPosition="left">
-                        <InputIcon class="pi pi-search" />
-                        <InputText v-model="commentsFilters['global'].value" placeholder="Пошук" style="width: 100%" />
-                    </IconField>
-                </div>
-            </template>
-            <template #empty> Клієнтів немає. </template>
-            <template #loading> <div class="w-full h-full bg-white flex justify-content-center align-items-center opacity-90">Завантаження...</div> </template>
-
-            <Column field="id" header="№ Профіля">
-                <template #body="{ data }"> {{ data.id }}</template>
-            </Column>
-            <Column field="userId" header="№ Користувача">
-                <template #body="{ data }"> {{ data.userId }}</template>
-            </Column>
-            <Column field="name" header="Номер телефону">
-                <template #body="{ data }"> {{ data.phone }}</template>
-            </Column>
-            <Column field="name" header="К-сть замовлень">
-                <template #body="{ data }"> {{ data.ordersCount }}</template>
-            </Column>
-        </DataTable>
+            </TabPanel>
+        </TabView>
     </div>
 </template>

@@ -225,4 +225,14 @@ import firebase from "./firebase";
 
 window.db = firebase.firestore;
 
+app.config.globalProperties.f = function (amount, currency = true) {
+    if (!amount) {
+        return amount;
+    }
+    if (!currency) {
+        return amount.toLocaleString('uk-UA');
+    }
+    return amount.toLocaleString('uk-UA', { style: 'currency', currency: 'UAH' });
+};
+
 app.mount('#app');
