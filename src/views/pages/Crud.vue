@@ -1,5 +1,5 @@
 <script setup>
-import { onBeforeMount, ref, reactive } from 'vue';
+import { onBeforeMount, ref, reactive, nextTick } from 'vue';
 import { FilterMatchMode } from 'primevue/api';
 import orderService from '@/service/OrderService';
 import productService from '@/service/ProductService';
@@ -79,8 +79,22 @@ const showError = (text) => {
 const catalogsList = ref([]);
 const categoriesList = ref([]);
 const filtersList = ref([]);
+
 const showAddModal = ref(false);
+const showEditModal = ref(false);
+
 const addFormData = ref({
+    name: '',
+    price: '',
+    status: true,
+    image: '',
+    description: '',
+    catalogId: '',
+    categoryId: '',
+    filters: {}
+});
+const editFormData = ref({
+    id: '',
     name: '',
     price: '',
     status: true,
@@ -98,6 +112,42 @@ const validate = (data) => {
         return !!data[field];
     });
 };
+
+const submitEditForm = async () => {
+    loading.value = true;
+
+    if (!validate({ ...editFormData.value })) {
+        showError('Заповність всі поля!');
+        return false;
+    }
+
+    const { result, message } = await productService.updateProduct(editFormData.value.id, { ...editFormData.value });
+
+    loading.value = false;
+    if (result) {
+        showSuccess(message);
+    } else {
+        showError(message);
+        return false;
+    }
+    editFormData.value = {
+        id: '',
+        name: '',
+        price: '',
+        status: true,
+        image: '',
+        description: '',
+        catalogId: '',
+        categoryId: '',
+        filters: {}
+    };
+    categoriesList.value = [];
+    showEditModal.value = false;
+    loading.value = false;
+
+    loadProducts();
+};
+
 const submitAddForm = async () => {
     loading.value = true;
 
@@ -145,9 +195,17 @@ const onAddImageRemove = () => {
     addFormData.value.image = '';
 };
 
+const onEditImageUpload = ({ files }) => {
+    editFormData.value.image = files[0];
+};
+const onEditImageRemove = () => {
+    editFormData.value.image = '';
+};
+
 const tableLoading = ref(false);
 const ordersLoading = ref(false);
 const commentsLoading = ref(false);
+const dryProductsList = ref([]);
 
 const loadProducts = async () => {
     tableLoading.value = true;
@@ -155,6 +213,7 @@ const loadProducts = async () => {
     productFiltersData.value = await FilterService.fetchProductFilters();
 
     const dryProducts = await productService.fetchProducts();
+    dryProductsList.value = JSON.parse(JSON.stringify(dryProducts));
     productsList.value = await productService.formatForTable(
         dryProducts,
         {
@@ -209,6 +268,31 @@ const completeOrder = (id) => {
                 ordersLoading.value = false;
             }
         }
+    });
+};
+
+const editProduct = async (productId) => {
+    const productFound = dryProductsList.value.find((product) => product.id === productId);
+    const { catalogId } = productsList.value.find((product) => product.id === productId);
+
+    if (!productFound) {
+        showError('Продукт не знайдено');
+    }
+
+    showEditModal.value = true;
+
+    editFormData.value.id = productId;
+    editFormData.value.name = productFound.name;
+    editFormData.value.description = productFound.description;
+    editFormData.value.price = productFound.price;
+    editFormData.value.status = productFound.status;
+    editFormData.value.catalogId = catalogId;
+    editFormData.value.categoryId = productFound.category;
+
+    await onCatalogChange(editFormData.value.catalogId);
+    const foundProductFilters = Object.values(productFiltersData.value).filter((filter) => filter.productId == productId);
+    foundProductFilters.forEach((filter) => {
+        editFormData.value.filters[filter.filterId] = filter.value;
     });
 };
 
@@ -347,6 +431,53 @@ onBeforeMount(async () => {
             </form>
         </Dialog>
 
+        <Dialog :loading="loading" header="Редагувати товар" v-model:visible="showEditModal" modal>
+            <form @submit.prevent="submitEditForm" class="flex flex-column mt-2 mb-2 gap-4">
+                <div class="flex flex-column gap-2">
+                    <label for="nameField">Назва</label>
+                    <InputText id="nameField" v-model="editFormData.name" required />
+                </div>
+                <div class="flex flex-column gap-2">
+                    <label for="priceField">Ціна</label>
+                    <InputNumber id="priceField" :minFractionDigits="2" :maxFractionDigits="2" v-model="editFormData.price" required />
+                </div>
+                <div class="flex flex-column gap-2">
+                    <label for="statusField">В наявності</label>
+                    <InputSwitch id="statusField" v-model="editFormData.status" required />
+                </div>
+                <div class="flex flex-column gap-2">
+                    <label for="nameField">Каталог</label>
+                    <Dropdown placeholder="Виберіть каталог" id="sampleField" emptyMessage="Немає даних" v-model="editFormData.catalogId" optionLabel="title" optionValue="id" :options="catalogsList" required @update:modelValue="onCatalogChange">
+                    </Dropdown>
+                </div>
+
+                <div class="flex flex-column gap-2">
+                    <label for="categoryIdField">Категорія</label>
+                    <Dropdown placeholder="Виберіть категорію" id="categoryIdField" emptyMessage="Немає даних" v-model="editFormData.categoryId" optionLabel="name" optionValue="id" :options="categoriesList" required> </Dropdown>
+                </div>
+
+                <div v-for="filter of filtersList" :key="filter.id" class="flex flex-column gap-2">
+                    <label :for="`filter_${filter.id}`">{{ filter.name }}</label>
+                    <Dropdown :placeholder="`Виберіть ${filter.name}`" :id="`filter_${filter.id}`" emptyMessage="Немає даних" v-model="editFormData['filters'][`${filter.id}`]" optionLabel="name" optionValue="id" :options="filter.options" required>
+                    </Dropdown>
+                </div>
+
+                <div class="flex flex-column gap-2">
+                    <label for="descriptionField">Опис</label>
+                    <Editor @update:modelValue="editFormData.description = $event" :modelValue="editFormData.description" editorStyle="height: 120px" />
+                </div>
+
+                <div class="flex flex-column gap-2">
+                    <label for="imageField">Зображення</label>
+                    <FileUpload name="image[]" mode="basic" customUpload accept="image/*" @select="onEditImageUpload" :fileLimit="1" @clear="onEditImageRemove" chooseLabel="Обрати" :multiple="false" />
+                </div>
+
+                <div class="mt-4 text-right">
+                    <Button label="Зберегти" :loading="loading" type="submit" icon="pi pi-save" />
+                </div>
+            </form>
+        </Dialog>
+
         <TabView>
             <TabPanel header="Замовлення">
                 <DataTable :loading="ordersLoading" :filters="orderFilters" v-model:filters="orderFilters" :value="ordersList" :paginator="true" :rows="10" dataKey="id" :rowHover="true" showGridlines>
@@ -464,12 +595,13 @@ onBeforeMount(async () => {
                             <img width="80" height="100" :src="data.image" style="object-fit: contain" />
                         </template>
                     </Column>
-                    <Column field="description" header="Опис">
-                        <template #body="{ data }"> <div v-html="data.description"></div> </template>
+                    <Column field="description" style="width: 35%" header="Опис">
+                        <template #body="{ data }"> <div style="max-height: 160px; overflow: auto" v-html="data.description"></div> </template>
                     </Column>
-                    <Column field="actions" header="Дії">
+                    <Column field="actions" header="Дії" style="width: 8%">
                         <template #body="{ data }">
                             <div class="flex flex-wrap gap-2">
+                                <Button icon="pi pi-pencil" class="p-button-info" @click="editProduct(data.id)" />
                                 <Button icon="pi pi-times" class="p-button-danger" @click="removeProduct($event, data.id)" />
                             </div>
                         </template>

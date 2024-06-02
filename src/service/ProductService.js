@@ -1,4 +1,4 @@
-import { getDocs, getDoc, query, collection, where, addDoc, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { getDocs, getDoc, query, collection, where, addDoc, doc, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { getStorage, ref, deleteObject, uploadBytes } from 'firebase/storage';
 import ImagesService from '@/service/ImagesService';
 import CategoriesService from '@/service/CategoriesService';
@@ -23,6 +23,7 @@ export default class ProductService {
             product.image = await ImagesService.getImage(product.image);
             product.category = await CategoriesService.getCategory(product.category);
             product.catalog = await CategoriesService.getCategoryCatalog(product.category.catalogId);
+            product.catalogId = product.catalog.id;
             product.catalog = product.catalog.title;
             product.category = product.category.name;
         }
@@ -33,6 +34,68 @@ export default class ProductService {
         const productsRef = await collection(window.db, 'products');
         const snapshot = await getDocs(productsRef);
         return snapshot.docs.map(document => ({ ...document.data(), id: document.id }));
+    }
+    static async updateProduct(id, data) {
+        const productRef = doc(window.db, 'products', id);
+
+        const updatedData = {
+            name: data.name,
+            description: data.description,
+            price: data.price,
+            status: data.status,
+            category: data.categoryId,
+        };
+
+        // Оновлюємо продукт
+        await updateDoc(productRef, updatedData);
+
+        // Оновлюємо фільтри продукту
+        const productFilterRef = collection(window.db, 'product_filters');
+        const q = query(productFilterRef, where('productId', '==', id));
+        const querySnapshot = await getDocs(q);
+
+        // Видаляємо старі фільтри
+        querySnapshot.forEach(async (doc) => {
+            await deleteDoc(doc.ref);
+        });
+
+        // Додаємо нові фільтри
+        for (const filter in data.filters) {
+            await addDoc(productFilterRef, {
+                productId: id,
+                filterId: filter,
+                value: data.filters[filter],
+            });
+        }
+
+        // Оновлюємо зображення, якщо воно є в data
+        if (data.image) {
+            // Отримуємо старе зображення продукту
+            const productDoc = await getDoc(productRef);
+            const oldImagePath = productDoc.data().image;
+
+            // Видаляємо старе зображення
+            if (oldImagePath) {
+                const oldImageRef = ref(storage, oldImagePath);
+                await deleteObject(oldImageRef);
+            }
+
+            // Завантажуємо нове зображення
+            const imagePath = `/products_images/${id}_${data.image.name}`;
+            const imageRef = ref(storage, imagePath);
+            await uploadBytes(imageRef, data.image);
+
+            // Оновлюємо запис продукту з новим шляхом до зображення
+            await updateDoc(productRef, {
+                image: imagePath,
+            });
+        }
+
+        return {
+            result: true,
+            id: id,
+            message: 'Продукт оновлено'
+        };
     }
     static async createProduct(data) {
         const productRef = await collection(window.db, 'products');

@@ -1,5 +1,4 @@
 import { getDoc, doc, collection, getDocs, updateDoc } from 'firebase/firestore';
-import { format } from 'date-fns';
 
 export default class CategoriesService {
     static async getCategory(id) {
@@ -10,12 +9,11 @@ export default class CategoriesService {
     static async getCategoryCatalog(id) {
         const catalogRef = await doc(window.db, 'catalogs', id);
         const snapshot = await getDoc(catalogRef);
-        return snapshot.data();
+        return { ...snapshot.data(), id: snapshot.id };
     }
     static async fetchPromo() {
         const productsRef = await collection(window.db, 'promos');
         const snapshot = await getDocs(productsRef);
-        console.log(snapshot.docs[0].data());
         return snapshot.docs[0].data();
     }
     static async updatePromo({ text, start, end }) {
