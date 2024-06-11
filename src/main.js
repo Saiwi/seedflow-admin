@@ -2,6 +2,7 @@ import { createApp } from 'vue';
 import App from './App.vue';
 import router from './router';
 
+
 import PrimeVue from 'primevue/config';
 import AutoComplete from 'primevue/autocomplete';
 import Accordion from 'primevue/accordion';
@@ -222,15 +223,35 @@ app.component('TriStateCheckbox', TriStateCheckbox);
 app.component('VirtualScroller', VirtualScroller);
 
 import firebase from "./firebase";
+import { getStorage, getDownloadURL, ref } from 'firebase/storage';
 
 window.db = firebase.firestore;
+
+app.directive('lazy-load', {
+    mounted(el, binding) {
+        const loadImage = async () => {
+            const dataSrc = binding.value;
+            if (dataSrc) {
+                try {
+                    const storage = getStorage();
+                    const pathReference = ref(storage, dataSrc);
+                    const downloadUrl = await getDownloadURL(pathReference);
+                    el.src = downloadUrl;
+                } catch (error) {
+                    console.error('Error loading image:', error);
+                }
+            }
+        };
+        loadImage();
+    },
+});
 
 app.config.globalProperties.f = function (amount, currency = true) {
     if (!amount) {
         return amount;
     }
     if (!currency) {
-        return amount.toLocaleString('uk-UA');
+        return amount.toLocaleString('uk-UA'); d
     }
     return amount.toLocaleString('uk-UA', { style: 'currency', currency: 'UAH' });
 };

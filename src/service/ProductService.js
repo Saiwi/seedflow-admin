@@ -1,7 +1,6 @@
 import { getDocs, getDoc, query, collection, where, addDoc, doc, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { getStorage, ref, deleteObject, uploadBytes } from 'firebase/storage';
 import ImagesService from '@/service/ImagesService';
-import CategoriesService from '@/service/CategoriesService';
 
 const storage = getStorage();
 export default class ProductService {
@@ -17,12 +16,11 @@ export default class ProductService {
         });
         return filters;
     }
-    static async formatForTable(data, filtersData, productFiltersData) {
+    static async formatForTable(data, filtersData, productFiltersData, categories, catalogs) {
         for (let product of data) {
             product.filters = ProductService.getProductFilters(product.id, filtersData, productFiltersData);
-            product.image = await ImagesService.getImage(product.image);
-            product.category = await CategoriesService.getCategory(product.category);
-            product.catalog = await CategoriesService.getCategoryCatalog(product.category.catalogId);
+            product.category = categories.find((category) => category.id == product.category);
+            product.catalog = catalogs.find((catalog) => catalog.id == product.category.catalogId);
             product.catalogId = product.catalog.id;
             product.catalog = product.catalog.title;
             product.category = product.category.name;

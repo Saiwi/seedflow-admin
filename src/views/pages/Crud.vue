@@ -213,6 +213,10 @@ const loadProducts = async () => {
     productFiltersData.value = await FilterService.fetchProductFilters();
 
     const dryProducts = await productService.fetchProducts();
+
+    const fetchedCategories = await CategoriesService.getCategories();
+    const fetchedCatalogs = await CategoriesService.getCatalogs();
+
     dryProductsList.value = JSON.parse(JSON.stringify(dryProducts));
     productsList.value = await productService.formatForTable(
         dryProducts,
@@ -221,7 +225,9 @@ const loadProducts = async () => {
         },
         {
             ...productFiltersData.value
-        }
+        },
+        fetchedCategories,
+        fetchedCatalogs
     );
     tableLoading.value = false;
 };
@@ -480,7 +486,7 @@ onBeforeMount(async () => {
 
         <TabView>
             <TabPanel header="Замовлення">
-                <DataTable :loading="ordersLoading" :filters="orderFilters" v-model:filters="orderFilters" :value="ordersList" :paginator="true" :rows="10" dataKey="id" :rowHover="true" showGridlines>
+                <DataTable :loading="ordersLoading" tableClass="products_table" :filters="orderFilters" v-model:filters="orderFilters" :value="ordersList" :paginator="true" :rows="10" dataKey="id" :rowHover="true" showGridlines>
                     <template #header>
                         <div class="flex flex-wrap gap-2 justify-content-between flex-column sm:flex-row flex-wrap gap-2">
                             <Button type="button" icon="pi pi-filter-slash" label="Збити фільтр" outlined @click="initOrderFilters" />
@@ -592,7 +598,7 @@ onBeforeMount(async () => {
                     </Column>
                     <Column field="image" header="Фото">
                         <template #body="{ data }">
-                            <img width="80" height="100" :src="data.image" style="object-fit: contain" />
+                            <img width="80" height="100" v-lazy-load="data.image" style="object-fit: contain" />
                         </template>
                     </Column>
                     <Column field="description" style="width: 35%" header="Опис">

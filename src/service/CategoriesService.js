@@ -1,6 +1,16 @@
 import { getDoc, doc, collection, getDocs, updateDoc } from 'firebase/firestore';
 
 export default class CategoriesService {
+    static async getCategories() {
+        const categoriesRef = await collection(window.db, 'categories');
+        const snapshot = await getDocs(categoriesRef);
+        return snapshot.docs.map(document => ({ ...document.data(), id: document.id }));
+    }
+    static async getCatalogs() {
+        const catalogsRef = await collection(window.db, 'catalogs');
+        const snapshot = await getDocs(catalogsRef);
+        return snapshot.docs.map(document => ({ ...document.data(), id: document.id }));
+    }
     static async getCategory(id) {
         const productsRef = await doc(window.db, 'categories', id);
         const snapshot = await getDoc(productsRef);
